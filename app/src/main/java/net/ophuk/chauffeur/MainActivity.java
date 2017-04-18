@@ -28,10 +28,11 @@ public class MainActivity extends Activity implements CameraBridgeViewBase.CvCam
     private CameraBridgeViewBase openCvCameraView;
     private CascadeClassifier cascadeClassifier;
     private Mat grayscaleImage;
-    private int width, height,  vote;
+    private int width, height, vote;
+    double rho, theta;
 
     static {
-        if(!OpenCVLoader.initDebug()) {
+        if (!OpenCVLoader.initDebug()) {
             Log.d(PKG_NAME, "OpenCV not loaded.");
         } else {
             Log.d(PKG_NAME, "OpenCV loaded.");
@@ -108,9 +109,9 @@ public class MainActivity extends Activity implements CameraBridgeViewBase.CvCam
         return tmp;
     }
 
-    private Mat findLines(Mat img, double rho, double theta, double minLength, double maxGap){
-        Mat lines = new Mat();
-        vote = 4;
+    private Mat findLines(Mat img, double minLength, double maxGap) {
+        Mat lines = new Mat(img.size(), CvType.CV_8U, new Scalar(255));
+        vote = 80;
 
         // Probablistic Hough transformation
         Imgproc.HoughLinesP(img, lines, rho, theta, vote, minLength, maxGap);
@@ -118,8 +119,9 @@ public class MainActivity extends Activity implements CameraBridgeViewBase.CvCam
         return lines;
     }
 
-    private Mat findLines(Mat img, double rho, double theta){
+    private Mat findLines(Mat img) {
         Mat lines = new Mat();
+
 
         if (vote < 1 || lines.rows() > 2) {
             vote = 200;
@@ -127,13 +129,13 @@ public class MainActivity extends Activity implements CameraBridgeViewBase.CvCam
             vote += 25;
         }
 
-        while (lines.rows() < 5 && vote > 0) {
+
+        while (lines.cols() < 5 && vote > 0) {
             // Hough Transformation to find the lines.
             Imgproc.HoughLines(img, lines, rho, theta, vote);
-            vote -= 5;
+            vote -= 25;
         }
 
-        //Mat result = new Mat(imgROI.size(), CvType.CV_8U, new Scalar(255));
         return lines;
     }
 
@@ -144,7 +146,7 @@ public class MainActivity extends Activity implements CameraBridgeViewBase.CvCam
             double data[] = lines.get(i, 0);
             Point x = new Point(data[0], data[1]);
             Point y = new Point(data[2], data[3]);
-            Scalar scale = new Scalar(0,0,255);
+            Scalar scale = new Scalar(0, 0, 255);
             Imgproc.line(result, x, y, scale, 2);
         }
 
@@ -160,7 +162,7 @@ public class MainActivity extends Activity implements CameraBridgeViewBase.CvCam
             double theta = data[1];
             Point pt1, pt2;
 
-            if ( theta > 0.09 && theta < 1.48 || theta < 3.14 && theta > 1.66 ) { // We only care about vertical lines.
+            if (theta > 0.09 && theta < 1.48 || theta < 3.14 && theta > 1.66) { // We only care about vertical lines.
                 pt1 = new Point(rho / Math.cos(theta), 0);
                 pt2 = new Point((rho - result.rows() * Math.sin(theta)) / Math.cos(theta), result.rows());
                 Imgproc.line(result, pt1, pt2, new Scalar(0, 0, 255), 2);
@@ -175,26 +177,29 @@ public class MainActivity extends Activity implements CameraBridgeViewBase.CvCam
     @Override
     public Mat onCameraFrame(Mat aInputFrame) {
         Log.d(PKG_NAME, "onCameraFrame");
+        rho = 1.0;
+        theta = Math.PI / 180.0;
+
         Imgproc.cvtColor(aInputFrame, grayscaleImage, Imgproc.COLOR_RGBA2RGB);
 
-
-        Mat canny_matrix = new Mat();
-        //Get the ROI
-        Rect roi = new Rect(0, grayscaleImage.cols() / 3, grayscaleImage.cols() - 1, grayscaleImage.rows() - grayscaleImage.cols() /3 );
-        Mat imgROI = grayscaleImage.submat(roi);
-
         //Canny edge detection
-        canny_matrix = apply_canny(imgROI);
+        Mat canny_matrix = new Mat();
+        canny_matrix = apply_canny(grayscaleImage);
 
-        Mat hough = findLines(canny_matrix, 1, Math.PI/180);
-        //Mat hough_p = findLines(canny_matrix, 1, Math.PI/180, 60., 10.);
+        //Get the ROI
+        //Rect roi = new Rect(0, canny_matrix.cols() / 3, canny_matrix.cols() - 1, canny_matrix.rows() - canny_matrix.cols() / 3);
+        //Mat imgROI = canny_matrix.submat(roi);
+
+
+        Mat hough = findLines(canny_matrix);
+        //Mat hough_p = findLines(canny_matrix, 60., 10.);
         //Core.bitwise_and(hough_p, hough, hough_p);
         //Mat hough_p_inv = new Mat(imgROI.size(), CvType.CV_8UC4, new Scalar(0));
         //Imgproc.threshold(hough_p, hough_p_inv, 150, 255, Imgproc.THRESH_BINARY_INV);
-        //apply_canny(hough_p_inv);o
-        //Mat result = findLines(hough_p_inv, 1, Math.PI/180., 60., 10.);
-        //Mat result = drawHoughLines(hough, aInputFrame, new Scalar(0));
-        Mat result = drawHoughLines(hough, aInputFrame);
+        //apply_canny(hough_p_inv);
+        //Mat result = findLines(hough_p_inv, 60., 10.);
+        Mat result = drawHoughLines(hough, aInputFrame, new Scalar(0));
+        //Mat result = drawHoughLines(hough, aInputFrame);
 
         return result;
     }
@@ -202,7 +207,8 @@ public class MainActivity extends Activity implements CameraBridgeViewBase.CvCam
     @Override
     public void onResume() {
         Log.d(PKG_NAME, "onResume");
-        super.onResume();;
+        super.onResume();
+        ;
         OpenCVLoader.initAsync(OpenCVLoader.OPENCV_VERSION_3_2_0, this, mLoaderCallback);
     }
 }
